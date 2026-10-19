@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>The Tesseract · Impossible Space</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#02020a;--fg:#f2f4ff;--mute:#8d92bd;--c1:#00f3ff;--c2:#9d4dff;--c3:#ff2fd6;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:'Montserrat',system-ui,sans-serif;overflow:hidden;touch-action:none}
+#gl{position:fixed;inset:0;z-index:1}
+.vig{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(2,2,10,.9) 100%)}
+.hud{position:fixed;z-index:5;left:20px;right:20px;top:calc(env(safe-area-inset-top,0px) + 18px);display:flex;justify-content:space-between;
+font:400 11px/1.7 ui-monospace,Menlo,monospace;color:var(--mute);pointer-events:none}
+.hud b{color:var(--c1);font-weight:400}
+.ui{position:fixed;z-index:5;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 6%);text-align:center;padding:0 20px;pointer-events:none}
+h1{font-weight:200;font-size:clamp(1.8rem,9vw,3.2rem);letter-spacing:.5em;margin-right:-.5em;text-transform:uppercase;
+background:linear-gradient(90deg,#fff,var(--c1),var(--c3),#fff);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+animation:shine 9s linear infinite}
+@keyframes shine{to{background-position:-300% 0}}
+.sub{margin:10px 0 28px;font-weight:200;font-size:.85rem;letter-spacing:.3em;color:var(--mute)}
+.btn{pointer-events:auto;cursor:pointer;color:var(--fg);font:400 .85rem 'Montserrat',sans-serif;letter-spacing:.35em;text-transform:uppercase;
+padding:16px 34px;border-radius:40px;border:1px solid transparent;
+background:linear-gradient(rgba(6,6,20,.7),rgba(6,6,20,.7)) padding-box,linear-gradient(90deg,var(--c1),var(--c3)) border-box;
+backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:glow 2.4s ease-in-out infinite alternate;transition:transform .2s}
+.btn:active{transform:scale(.94)}
+.btn:focus-visible{outline:2px solid var(--c1);outline-offset:4px}
+@keyframes glow{from{box-shadow:0 0 14px rgba(0,243,255,.15)}to{box-shadow:0 0 34px rgba(255,47,214,.45)}}
+.hint{margin-top:18px;font-size:.7rem;letter-spacing:.12em;color:var(--mute);opacity:.8}
+.snd{position:fixed;z-index:6;right:20px;top:calc(env(safe-area-inset-top,0px) + 66px);cursor:pointer;color:var(--mute);background:rgba(6,6,20,.55);border:1px solid rgba(141,146,189,.35);border-radius:30px;padding:8px 16px;font:400 .72rem 'Montserrat',sans-serif;letter-spacing:.1em;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.snd[aria-pressed=true]{color:var(--c1);border-color:var(--c1)}
+.snd:focus-visible{outline:2px solid var(--c1);outline-offset:3px}
+#flash{position:fixed;inset:0;z-index:50;background:#fff;opacity:0;pointer-events:none}
+#cover{position:fixed;inset:0;z-index:60;background:var(--bg);pointer-events:none}
+</style>
+</head>
+<body>
+<div id="gl"></div><div class="vig"></div><div id="flash"></div><div id="cover"></div>
+<button id="snd" class="snd" aria-pressed="false">Sound off</button>
+<div class="hud">
+  <div>Tesseract<br><b id="r1">XW 0.00 rad</b></div>
+  <div style="text-align:right">8 cells · 32 edges<br>Gravity shifts <b id="n">0</b></div>
+</div>
+<div class="ui">
+  <h1 id="ttl">Dimension 4</h1>
+  <p class="sub">Reality is just a perspective</p>
+  <button id="btn" class="btn">Shift Gravity</button>
+  <p class="hint">Drag to turn the fourth axis. Double-tap to warp.</p>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), H1=x=>((x%1)+1)%1;
+const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- scene ---------- */
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);renderer.setClearColor(0x02020a);
+$('#gl').appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x02020a,.014);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,400);
+const rig=new THREE.Group();rig.add(camera);scene.add(rig);
+let S=11;
+function fit(){const a=innerWidth/innerHeight;camera.aspect=a;camera.position.z=a<1?24:15;S=a<1?8.5:11;
+camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)}
+fit();addEventListener('resize',fit);
+
+/* ---------- true 4D tesseract ---------- */
+const V=[],E=[];
+for(let i=0;i<16;i++)V.push([i&1?1:-1,i&2?1:-1,i&4?1:-1,i&8?1:-1]);
+for(let i=0;i<16;i++)for(let b=1;b<16;b<<=1)if(!(i&b))E.push([i,i|b]);
+const gt=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d'),
+r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(.25,'rgba(255,255,255,.45)');
+r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c)})();
+const add=THREE.AdditiveBlending;
+function Tess(k,dir,op){
+  const g=new THREE.Group(),lp=new Float32Array(192),lc=new Float32Array(192),pp=new Float32Array(48),pc=new Float32Array(48);
+  const lg=new THREE.BufferGeometry(),pg=new THREE.BufferGeometry();
+  lg.setAttribute('position',new THREE.BufferAttribute(lp,3));lg.setAttribute('color',new THREE.BufferAttribute(lc,3));
+  pg.setAttribute('position',new THREE.BufferAttribute(pp,3));pg.setAttribute('color',new THREE.BufferAttribute(pc,3));
+  g.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:op,blending:add,depthWrite:false})));
+  g.add(new THREE.Points(pg,new THREE.PointsMaterial({size:2.2*k,map:gt,vertexColors:true,transparent:true,blending:add,depthWrite:false})));
+  scene.add(g);return{g,lg,pg,lp,lc,pp,pc,k,dir};
+}
+const T=[Tess(1,1,.95),Tess(.42,-1,1)];
+const rot=(v,i,j,a)=>{const c=Math.cos(a),s=Math.sin(a),p=v[i],q=v[j];v[i]=p*c-q*s;v[j]=p*s+q*c};
+const col=new THREE.Color(),P=[];
+function updTess(o,t,hue,sc,dx,dy){
+  const a=[o.dir*(t*.5+dx),o.dir*(t*.37+dy),o.dir*t*.23,o.dir*t*.2,o.dir*t*.13];
+  for(let i=0;i<16;i++){
+    const v=V[i].slice();
+    rot(v,0,3,a[0]);rot(v,1,3,a[1]);rot(v,2,3,a[2]);rot(v,0,1,a[3]);rot(v,0,2,a[4]);
+    const s=S*o.k/(3.4-v[3]);
+    P[i]=[v[0]*s,v[1]*s,v[2]*s,v[3]];
+    o.pp.set([P[i][0],P[i][1],P[i][2]],i*3);
+    col.setHSL(H1(hue+v[3]*.07),1,.55+v[3]*.1);o.pc.set([col.r,col.g,col.b],i*3);
+  }
+  E.forEach((e,n)=>e.forEach((vi,m)=>{const p=P[vi],q=(n*2+m)*3;
+    o.lp[q]=p[0];o.lp[q+1]=p[1];o.lp[q+2]=p[2];
+    col.setHSL(H1(hue+p[3]*.07),1,.5+p[3]*.1);o.lc[q]=col.r;o.lc[q+1]=col.g;o.lc[q+2]=col.b}));
+  o.lg.attributes.position.needsUpdate=o.lg.attributes.color.needsUpdate=true;
+  o.pg.attributes.position.needsUpdate=o.pg.attributes.color.needsUpdate=true;
+  o.g.scale.setScalar(sc);
+  return a[0];
+}
+
+/* ---------- infinite twisting tunnel ---------- */
+const N=64,SP=4,frames=[],fg=new THREE.BufferGeometry().setFromPoints([[-1,-1],[1,-1],[1,1],[-1,1]].map(p=>new THREE.Vector3(p[0]*12,p[1]*12,0)));
+for(let i=0;i<N;i++){
+  const f=new THREE.LineLoop(fg,new THREE.LineBasicMaterial({transparent:true,opacity:.5,blending:add,depthWrite:false}));
+  f.position.z=16-i*SP;scene.add(f);frames.push(f);
+}
+
+/* ---------- quantum dust ---------- */
+const SN=1500,sp=new Float32Array(SN*3);
+for(let i=0;i<SN;i++){sp[i*3]=(Math.random()-.5)*23;sp[i*3+1]=(Math.random()-.5)*23;sp[i*3+2]=16-Math.random()*N*SP}
+const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(sp,3));
+scene.add(new THREE.Points(sg,new THREE.PointsMaterial({size:.12,map:gt,color:0x9be9ff,transparent:true,blending:add,depthWrite:false})));
+
+/* ---------- state, intro, interaction ---------- */
+const st={sp:calm?6:170,fov:calm?75:125,k:calm?1:0,p:0,hs:0};
+if(!calm){
+  gsap.to(st,{sp:6,fov:75,duration:3.4,ease:'power3.out',overwrite:'auto'});
+  gsap.to(st,{k:1,duration:2.6,delay:.6,ease:'elastic.out(1,.55)'});
+  gsap.from('#ttl',{opacity:0,letterSpacing:'1.4em',filter:'blur(14px)',duration:2.4,delay:1,ease:'power3.out'});
+  gsap.from('.sub,.btn,.hint',{opacity:0,y:14,duration:1.2,delay:2,stagger:.2,ease:'power2.out'});
+}
+gsap.to('#cover',{opacity:0,duration:calm?.2:2,delay:calm?0:.3,onComplete:()=>$('#cover').remove()});
+
+let busy=false,roll=0,n=0;
+function shift(){
+  if(busy)return;busy=true;n++;$('#n').textContent=n;
+  navigator.vibrate&&navigator.vibrate(40);boom();
+  gsap.fromTo('#flash',{opacity:0},{opacity:calm?.1:.35,duration:.12,yoyo:true,repeat:1});
+  roll+=Math.PI/2;
+  gsap.to(rig.rotation,{z:roll,duration:calm?.6:2.6,ease:'power3.inOut'});
+  gsap.to(st,{sp:calm?20:150,fov:calm?75:118,duration:1.1,ease:'power2.in',overwrite:'auto'});
+  gsap.to(st,{sp:6,fov:75,duration:1.8,delay:1.1,ease:'power3.out',onComplete:()=>{busy=false}});
+  gsap.to(st,{p:.6,duration:1.3,yoyo:true,repeat:1,ease:'power2.inOut'});
+  gsap.to(st,{hs:st.hs+.28,duration:2.6,ease:'power2.inOut'});
+}
+$('#btn').addEventListener('click',shift);
+
+let dx=0,dy=0,tdx=0,tdy=0,px=0,py=0,lx=0,ly=0,down=false,lastTap=0;
+addEventListener('pointerdown',e=>{
+  if(e.target.closest('button'))return;
+  down=true;lx=e.clientX;ly=e.clientY;
+  const now=performance.now();if(now-lastTap<320)shift();lastTap=now;
+});
+addEventListener('pointermove',e=>{
+  px=e.clientX/innerWidth-.5;py=e.clientY/innerHeight-.5;
+  if(down){tdx+=(e.clientX-lx)*.012;tdy+=(e.clientY-ly)*.012;lx=e.clientX;ly=e.clientY}
+});
+['pointerup','pointercancel'].forEach(ev=>addEventListener(ev,()=>{down=false}));
+
+/* ---------- sound (synthesized live, no audio files) ---------- */
+let ac,master,filt,bus,noiseG,nbp,on=false,tried=false;
+const snd=$('#snd');
+function initAudio(){
+  ac=new(window.AudioContext||window.webkitAudioContext)();
+  const comp=ac.createDynamicsCompressor();comp.connect(ac.destination);
+  master=ac.createGain();master.gain.value=0;master.connect(comp);
+  filt=ac.createBiquadFilter();filt.type='lowpass';filt.frequency.value=500;filt.Q.value=3;
+  const dl=ac.createDelay(1),fb=ac.createGain(),wet=ac.createGain();
+  dl.delayTime.value=.45;fb.gain.value=.55;wet.gain.value=.5;
+  filt.connect(master);filt.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(wet);wet.connect(master);
+  bus=ac.createGain();bus.connect(master);bus.connect(dl);
+  [[55,0,'sawtooth',.07],[82.41,6,'sawtooth',.06],[110,-5,'sine',.1],[164.81,3,'sine',.06],[220,-7,'sine',.04]].forEach(([f,dt,ty,v])=>{
+    const o=ac.createOscillator(),g=ac.createGain();o.type=ty;o.frequency.value=f;o.detune.value=dt;g.gain.value=v;o.connect(g);g.connect(filt);o.start()});
+  const l=ac.createOscillator(),lg=ac.createGain();l.frequency.value=.07;lg.gain.value=250;l.connect(lg);lg.connect(filt.frequency);l.start();
+  const nb=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate),nd=nb.getChannelData(0);
+  for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+  const ns=ac.createBufferSource();ns.buffer=nb;ns.loop=true;
+  nbp=ac.createBiquadFilter();nbp.type='bandpass';nbp.Q.value=1.2;noiseG=ac.createGain();noiseG.gain.value=0;
+  ns.connect(nbp);nbp.connect(noiseG);noiseG.connect(master);ns.start();
+  (function pluck(){
+    if(on){const f=[440,523.25,659.25,783.99,880,1046.5][Math.random()*6|0],o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime;
+      o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.11,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+2.4);
+      o.connect(g);g.connect(bus);o.start(t);o.stop(t+2.5)}
+    setTimeout(pluck,700+Math.random()*1300);
+  })();
+}
+function setSound(v){
+  if(v&&!ac)initAudio();
+  on=v;if(!ac)return;
+  if(v)ac.resume();
+  master.gain.setTargetAtTime(v?.7:0,ac.currentTime,v?1.5:.25);
+  snd.textContent=v?'Sound on':'Sound off';snd.setAttribute('aria-pressed',v);
+}
+function audioTick(){
+  if(!ac)return;
+  const w=Math.max(0,(st.sp-6)/150);
+  filt.frequency.value=450+st.sp*16;
+  nbp.frequency.value=300+w*3500;noiseG.gain.value=w*.22;
+}
+function boom(){
+  if(!on)return;const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime;
+  o.frequency.setValueAtTime(110,t);o.frequency.exponentialRampToValueAtTime(30,t+1);
+  g.gain.setValueAtTime(.6,t);g.gain.exponentialRampToValueAtTime(.001,t+1.4);
+  o.connect(g);g.connect(master);o.start(t);o.stop(t+1.5);
+}
+snd.addEventListener('click',()=>{tried=true;setSound(!on)});
+['pointerup','touchend','click'].forEach(ev=>addEventListener(ev,e=>{if(!tried&&!e.target.closest('#snd')){tried=true;setSound(true)}}));
+document.addEventListener('visibilitychange',()=>{if(ac)document.hidden?ac.suspend():on&&ac.resume()});
+
+/* ---------- loop ---------- */
+const clock=new THREE.Clock();let fr=0,rx=0,ry=0;
+(function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),.05),t=clock.elapsedTime*(calm?.3:1);
+  dx+=(tdx-dx)*.08;dy+=(tdy-dy)*.08;
+  const hue=.56+.13*Math.sin(t*.12)+st.hs;
+  const sc=st.k*(1+st.p);
+  const ang=updTess(T[0],t,hue,sc,dx,dy);updTess(T[1],t,hue+.3,sc*(1+st.p*.5),dy,dx);
+  frames.forEach(f=>{
+    f.position.z+=st.sp*dt;if(f.position.z>16)f.position.z-=N*SP;
+    f.rotation.z=f.position.z*.02+t*.15;
+    f.material.color.setHSL(H1(hue+f.position.z*.0016),1,.5);
+  });
+  for(let i=0;i<SN;i++){let z=sp[i*3+2]+st.sp*dt;if(z>16)z-=N*SP;sp[i*3+2]=z}
+  sg.attributes.position.needsUpdate=true;
+  rx+=(-py*.14-rx)*.05;ry+=(-px*.14-ry)*.05;rig.rotation.x=rx;rig.rotation.y=ry;
+  audioTick();camera.fov=st.fov;camera.updateProjectionMatrix();
+  if(++fr%6===0)$('#r1').textContent='XW '+(((ang%6.2832)+6.2832)%6.2832).toFixed(2)+' rad';
+  renderer.render(scene,camera);
+})();
+</script>
+</body>
+</html>
